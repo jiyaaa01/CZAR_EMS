@@ -8,7 +8,7 @@ require('dotenv').config();
 const connectToDB = async () => {
   try {
     // Use Atlas connection string from .env, fallback to local for development
-    const mongoUri = process.env.MONGODB_URI ;
+    const mongoUri = (process.env.MONGO_URI);
     await mongoose.connect(mongoUri);
     console.log('✅ MongoDB connected successfully');
   } catch (error) {
