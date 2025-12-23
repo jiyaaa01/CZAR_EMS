@@ -5,6 +5,7 @@
   "type": "commonjs",
   "scripts": {
     "start": "node server/server.js",
+    "seed": "node server/seed.js",
     "dev": "concurrently \"npm start\" \"cd client && npm run dev\"",
     "server": "node server/server.js",
     "client": "cd client && npm run dev"

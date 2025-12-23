@@ -6,22 +6,42 @@ const Holiday = require('../model/holiday');
 require('dotenv').config();
 
 const connectToDB = async () => {
-  try {
-    // Use Atlas connection string from .env, fallback to local for development
-    const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/czar_ems';
-    await mongoose.connect(mongoUri);
-    console.log('✅ MongoDB connected successfully');
-  } catch (atlasError) {
-    console.error('❌ MongoDB Atlas connection error:', atlasError.message);
-    console.log('🔄 Attempting to connect to local MongoDB...');
+    const mongoUri = process.env.MONGODB_URI;
     try {
-      await mongoose.connect('mongodb://localhost:27017/czar_ems');
+      await mongoose.connect(mongoUri);
       console.log('✅ Connected to local MongoDB successfully');
     } catch (localError) {
       console.error('❌ Local MongoDB connection error:', localError.message);
       console.log('💡 Ensure MongoDB is installed and running locally, or whitelist your IP in Atlas.');
       process.exit(1);
     }
+  };
+// };
+
+const createDefaultEmployee = async () => {
+  const employeeCount = await User.countDocuments({ role: 'employee' });
+  if (employeeCount === 0) {
+    const hashedPassword = await bcrypt.hash('employee123', 12);
+    const user = await new User({
+      name: 'Employee User',
+      email: 'employee@czarcore.com',
+      password: hashedPassword,
+      role: 'employee'
+    }).save();
+
+    // Also create in Employee model
+    const Employee = require('../model/employeeModel');
+    await new Employee({
+      userId: user._id,
+      name: 'Employee User',
+      email: 'employee@czarcore.com',
+      password: hashedPassword,
+      role: 'employee',
+      phone: '',
+      department: 'HR',
+      isActive: true,
+    }).save();
+    console.log('✅ Default employee created: employee@czarcore.com / employee123');
   }
 };
 
@@ -67,4 +87,4 @@ const addSampleHolidays = async () => {
   }
 };
 
-module.exports = { createDefaultAdmin, addSampleHolidays, connectToDB };
+module.exports = { createDefaultAdmin, createDefaultEmployee, addSampleHolidays, connectToDB };
