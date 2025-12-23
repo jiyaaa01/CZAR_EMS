@@ -6,7 +6,7 @@ const Holiday = require('../model/holiday');
 require('dotenv').config();
 
 const connectToDB = async () => {
-    const mongoUri = process.env.MONGODB_URI;
+    const mongoUri = process.env.MONGO_URI;
     try {
       await mongoose.connect(mongoUri);
       console.log('✅ Connected to local MongoDB successfully');
