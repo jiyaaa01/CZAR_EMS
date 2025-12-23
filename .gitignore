@@ -104,5 +104,5 @@ Thumbs.db
 *.tmp
 *.temp
 
-
+# Uploaded files
 uploads/
