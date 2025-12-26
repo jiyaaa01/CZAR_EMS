@@ -6,7 +6,8 @@ require('dotenv').config();
 
 const routes = require('./routes');
 const { errorHandler } = require('./middleware/errorHandler');
-const { connectToDB, createDefaultAdmin } = require('./config/db');
+const { connectToDB  } = require('./config/db');
+
 
 const app = express();
 const PORT = process.env.PORT || 5002;
@@ -68,7 +69,6 @@ app.use(errorHandler);
 
 const startServer = async () => {
   await connectToDB();
-  await createDefaultAdmin();
   app.listen(PORT, '0.0.0.0', () => console.log(`server running on port ${PORT}`));
 };
 
