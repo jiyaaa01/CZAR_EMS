@@ -277,20 +277,47 @@ exports.updateEmployee = async (req, res) => {
       role,
     } = req.body;
 
+    // Prepare update data
+    const updateData = {
+      name,
+      phone,
+      personalEmail,
+      dateOfBirth,
+      dateOfJoining,
+      allocatedLeaves,
+      department,
+      position,
+      role,
+      updatedAt: new Date(),
+    };
+
+    // Handle profile photo upload if provided
+    if (req.file) {
+      const fs = require('fs');
+      const path = require('path');
+
+      // Get the employee first to check for existing photo
+      const existingEmployee = await Employee.findOne({ employeeId: req.params.employeeId });
+
+      // Delete old profile photo if exists
+      if (existingEmployee && existingEmployee.profilePhoto) {
+        const oldPhotoPath = path.join(__dirname, '../../uploads/', existingEmployee.profilePhoto);
+        if (fs.existsSync(oldPhotoPath)) {
+          try {
+            fs.unlinkSync(oldPhotoPath);
+          } catch (err) {
+            console.error('Error deleting old profile photo:', err);
+          }
+        }
+      }
+
+      // Add new profile photo filename to update data
+      updateData.profilePhoto = req.file.filename;
+    }
+
     const employee = await Employee.findOneAndUpdate(
       { employeeId: req.params.employeeId },
-      {
-        name,
-        phone,
-        personalEmail,
-        dateOfBirth,
-        dateOfJoining,
-        allocatedLeaves,
-        department,
-        position,
-        role,
-        updatedAt: new Date(),
-      },
+      updateData,
       { new: true }
     );
 

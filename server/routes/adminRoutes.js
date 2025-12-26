@@ -43,12 +43,29 @@ const profileStorage = multer.diskStorage({
     }
 });
 
-const uploadProfile = multer({ storage: profileStorage });
+// File filter to only accept JPG and PNG
+const profileFileFilter = (req, file, cb) => {
+    const allowedTypes = /jpeg|jpg|png/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+
+    if (mimetype && extname) {
+        return cb(null, true);
+    } else {
+        cb(new Error('Only JPG and PNG files are allowed!'));
+    }
+};
+
+const uploadProfile = multer({
+    storage: profileStorage,
+    fileFilter: profileFileFilter,
+    limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+});
 
 // Admin routes
 router.get('/all-employees', verifyToken, verifyAdmin, getAllEmployees);
 router.get('/employee/:id', verifyToken, verifyAdmin, getEmployeeById);
-router.put('/update-employee/:employeeId', verifyToken, verifyAdmin, updateEmployee);
+router.put('/update-employee/:employeeId', verifyToken, verifyAdmin, uploadProfile.single('profilePhoto'), updateEmployee);
 router.delete('/employee/:id', verifyToken, verifyAdmin, deleteEmployee);
 router.post('/add-employee', verifyToken, verifyAdmin, uploadProfile.single('profilephoto'), createEmployee);
 router.get('/get-admin-details', verifyToken, verifyAdmin, getAdminDetails);
