@@ -25,7 +25,14 @@ app.use(cors({
 
 // Custom JSON parser to handle leading/trailing whitespace
 app.use((req, res, next) => {
-  if (req.headers['content-type'] && req.headers['content-type'].includes('application/json')) {
+  const contentType = req.headers['content-type'] || '';
+
+  // Skip multipart/form-data (file uploads) and let multer handle it
+  if (contentType.includes('multipart/form-data')) {
+    return next();
+  }
+
+  if (contentType.includes('application/json')) {
     let data = '';
     req.on('data', chunk => data += chunk);
     req.on('end', () => {

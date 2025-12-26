@@ -37,6 +37,10 @@ const DailyAttendanceSchema = new mongoose.Schema({
   leaveType: {
     type: String,
     default: null
+  },
+  holidayName: {
+    type: String,
+    default: null
   }
 
 }, { _id: false }); // Disable auto-generating _id for sub-documents to save space
@@ -44,9 +48,8 @@ const DailyAttendanceSchema = new mongoose.Schema({
 // Main Schema for the Monthly Report
 const AttendanceSchema = new mongoose.Schema({
   employeeId: {
-    type: String,
-    required: true,
-    trim: true
+    type: Number,
+    required: true
   },
   name: {
     type: String,

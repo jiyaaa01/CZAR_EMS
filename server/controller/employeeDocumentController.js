@@ -21,7 +21,7 @@ const uploadDocument = async (req, res) => {
             return res.status(400).json({ message: 'No file uploaded' });
         }
 
-        if (!['aadhaar', 'pan', 'bank', 'salary'].includes(type)) {
+        if (!['aadhaar', 'pan', 'bank', 'salary', 'other'].includes(type)) {
             return res.status(400).json({ message: 'Invalid document type' });
         }
 
@@ -251,7 +251,8 @@ const uploadMyDocument = async (req, res) => {
             'Aadhar Card': 'aadhaar',
             'PAN Card': 'pan',
             'Bank Passbook': 'bank',
-            'Salary Slip': 'salary'
+            'Salary Slip': 'salary',
+            'Other Document': 'other'
         };
         const type = typeMap[documentType];
         if (!type) {

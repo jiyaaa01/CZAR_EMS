@@ -34,25 +34,82 @@ exports.getEmployeeById = async (req, res) => {
   }
 };
 
-// ✅ Admin: Get all employees
+// ✅ Admin: Get all employees with calculated leave balance
 exports.getAllEmployees = async (req, res) => {
   try {
-    // if (!(await ensureAdmin(req, res))) return;
-    console.log("hii");
-
     const { search } = req.query;
-    let query = {};
+    let matchQuery = {};
 
     if (search && search.trim()) {
-      query.$or = [
-        { name: { $regex: search.trim(), $options: 'i' } },
-        { employeeId: { $regex: search.trim(), $options: 'i' } },
-        { workEmail: { $regex: search.trim(), $options: 'i' } }
+      const searchVal = search.trim();
+      const numericSearch = parseInt(searchVal);
+
+      const orConditions = [
+        { name: { $regex: searchVal, $options: 'i' } },
+        { workEmail: { $regex: searchVal, $options: 'i' } }
       ];
+
+      if (!isNaN(numericSearch)) {
+        orConditions.push({ employeeId: numericSearch });
+      }
+
+      matchQuery.$or = orConditions;
     }
 
-    const employees = await Employee.find(query).select("-workPassword");
-    console.log(employees);
+    const employees = await Employee.aggregate([
+      { $match: matchQuery },
+      {
+        $lookup: {
+          from: "leaverequests", // MongoDB collection name for LeaveRequest
+          let: { empId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$employeeId", "$$empId"] },
+                    { $eq: ["$status", "Approved"] },
+                    {
+                      $not: {
+                        $eq: [{ $toLower: { $ifNull: ["$leaveReasonType", ""] } }, "sitevisit"]
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              $group: {
+                _id: null,
+                totalApprovedDays: { $sum: { $ifNull: ["$days", 0] } }
+              }
+            }
+          ],
+          as: "leaveStats"
+        }
+      },
+      {
+        $addFields: {
+          approvedLeaveDays: { $ifNull: [{ $arrayElemAt: ["$leaveStats.totalApprovedDays", 0] }, 0] }
+        }
+      },
+      {
+        $addFields: {
+          availableLeaveBalance: {
+            $subtract: [
+              { $ifNull: ["$allocatedLeaves", 20] },
+              "$approvedLeaveDays"
+            ]
+          }
+        }
+      },
+      {
+        $project: {
+          workPassword: 0,
+          leaveStats: 0
+        }
+      }
+    ]);
 
     res.status(200).json({ employees });
   } catch (error) {
@@ -88,6 +145,12 @@ exports.createEmployee = async (req, res) => {
     // Check if work email already exists check in User collection
     if (await User.findOne({ email: manualWorkEmail.toLowerCase() })) {
       return res.status(400).json({ message: "Work email already exists" });
+    }
+
+    // Parse employeeId as Number
+    const numericEmployeeId = parseInt(employeeId);
+    if (isNaN(numericEmployeeId)) {
+      return res.status(400).json({ message: "Employee ID must be a number" });
     }
 
     const dob = new Date(dateOfBirth);
@@ -134,14 +197,14 @@ exports.createEmployee = async (req, res) => {
 
     // Check for existing Employee ID or Email
     const existingEmployee = await Employee.findOne({
-      $or: [{ employeeId }, { personalEmail }],
+      $or: [{ employeeId: numericEmployeeId }, { personalEmail }],
     });
     if (existingEmployee) {
       return res.status(400).json({ message: "Employee with this ID or email already exists" });
     }
 
     const employee = await new Employee({
-      employeeId,
+      employeeId: numericEmployeeId,
       name,
       phone,
       personalEmail,
@@ -214,20 +277,47 @@ exports.updateEmployee = async (req, res) => {
       role,
     } = req.body;
 
+    // Prepare update data
+    const updateData = {
+      name,
+      phone,
+      personalEmail,
+      dateOfBirth,
+      dateOfJoining,
+      allocatedLeaves,
+      department,
+      position,
+      role,
+      updatedAt: new Date(),
+    };
+
+    // Handle profile photo upload if provided
+    if (req.file) {
+      const fs = require('fs');
+      const path = require('path');
+
+      // Get the employee first to check for existing photo
+      const existingEmployee = await Employee.findOne({ employeeId: req.params.employeeId });
+
+      // Delete old profile photo if exists
+      if (existingEmployee && existingEmployee.profilePhoto) {
+        const oldPhotoPath = path.join(__dirname, '../../uploads/', existingEmployee.profilePhoto);
+        if (fs.existsSync(oldPhotoPath)) {
+          try {
+            fs.unlinkSync(oldPhotoPath);
+          } catch (err) {
+            console.error('Error deleting old profile photo:', err);
+          }
+        }
+      }
+
+      // Add new profile photo filename to update data
+      updateData.profilePhoto = req.file.filename;
+    }
+
     const employee = await Employee.findOneAndUpdate(
       { employeeId: req.params.employeeId },
-      {
-        name,
-        phone,
-        personalEmail,
-        dateOfBirth,
-        dateOfJoining,
-        allocatedLeaves,
-        department,
-        position,
-        role,
-        updatedAt: new Date(),
-      },
+      updateData,
       { new: true }
     );
 
@@ -315,11 +405,17 @@ exports.reviewLeaveRequest = async (req, res) => {
     if (status === "Approved") {
       const fromDate = new Date(leaveRequest.fromDate);
       const toDate = new Date(leaveRequest.toDate);
+      console.log(`Reviewing leave: from=${fromDate}, to=${toDate}`);
 
       // Calculate number of days (inclusive of both start and end dates)
       const daysDiff = Math.ceil((toDate - fromDate) / (1000 * 60 * 60 * 24)) + 1;
 
-      console.log(`Approving leave for employeeId: ${leaveRequest.employeeId}, daysDiff: ${daysDiff}`);
+      if (isNaN(daysDiff)) {
+        console.error("Invalid dates in leave request:", leaveRequest);
+        return res.status(400).json({ message: "Invalid leave dates" });
+      }
+
+      console.log(`Approving leave for employee ObjectId: ${leaveRequest.employeeId}, daysDiff: ${daysDiff}`);
 
       let employee = null;
       if (!leaveRequest.leaveReasonType || leaveRequest.leaveReasonType.toLowerCase() !== 'sitevisit') {
@@ -355,7 +451,7 @@ exports.reviewLeaveRequest = async (req, res) => {
 
           // Find existing attendance record or create new
           let attRecord = await Attendance.findOne({
-            employeeId: leaveRequest.employeeId.toString(),
+            employeeId: employee.employeeId,
             month,
             year
           });
@@ -390,7 +486,7 @@ exports.reviewLeaveRequest = async (req, res) => {
           if (!attRecord) {
             // Create new attendance record with this day
             attRecord = new Attendance({
-              employeeId: leaveRequest.employeeId.toString(),
+              employeeId: employee.employeeId,
               name: employee.name,
               month,
               year,
@@ -420,6 +516,7 @@ exports.reviewLeaveRequest = async (req, res) => {
           // Move to next day
           currentDate.setDate(currentDate.getDate() + 1);
         }
+        console.log("Attendance records updated successfully.");
       }
     }
 
@@ -435,8 +532,13 @@ exports.reviewLeaveRequest = async (req, res) => {
       leaveRequest: populatedLeaveRequest,
     });
   } catch (error) {
-    console.error("Review Leave Error:", error);
-    res.status(500).json({ message: "Server error" });
+    console.error("Review Leave Error - Details:", {
+      message: error.message,
+      stack: error.stack,
+      params: req.params,
+      body: req.body
+    });
+    res.status(500).json({ message: "Server error", details: error.message });
   }
 };
 
@@ -707,7 +809,7 @@ exports.updateEmployeeProfile = async (req, res) => {
     updateData.updatedAt = new Date();
 
     const employee = await Employee.findOneAndUpdate(
-      { employeeId: req.params.id },
+      { employeeId: parseInt(req.params.id) },
       updateData,
       { new: true }
     );

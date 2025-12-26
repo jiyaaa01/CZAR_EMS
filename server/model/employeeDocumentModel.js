@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const documentSubSchema = new mongoose.Schema({
     type: {
         type: String,
-        enum: ['aadhaar', 'pan', 'bank', 'salary'],
+        enum: ['aadhaar', 'pan', 'bank', 'salary', 'other'],
         required: true
     },
     filename: {
@@ -18,25 +18,25 @@ const documentSubSchema = new mongoose.Schema({
         type: Number,
         min: 1,
         max: 12,
-        required: function() { return this.type === 'salary'; }
+        required: function () { return this.type === 'salary'; }
     },
     fromYear: {
         type: Number,
         min: 2000,
         max: new Date().getFullYear() + 10,
-        required: function() { return this.type === 'salary'; }
+        required: function () { return this.type === 'salary'; }
     },
     toMonth: {
         type: Number,
         min: 1,
         max: 12,
-        required: function() { return this.type === 'salary'; }
+        required: function () { return this.type === 'salary'; }
     },
     toYear: {
         type: Number,
         min: 2000,
         max: new Date().getFullYear() + 10,
-        required: function() { return this.type === 'salary'; }
+        required: function () { return this.type === 'salary'; }
     }
 }, { _id: true });
 

@@ -237,10 +237,15 @@ const path = require("path");
 
 exports.uploadAttendance = async (req, res) => {
   try {
+    console.log("Upload request received");
+    console.log("File:", req.file);
+    console.log("Body:", req.body);
+
     const file = req.file;
     const { month, year } = req.body;
 
     if (!file || !month || !year) {
+      console.error("Missing required fields - File:", !!file, "Month:", month, "Year:", year);
       return res.status(400).json({ error: "File, month, and year are required." });
     }
 
@@ -248,8 +253,11 @@ exports.uploadAttendance = async (req, res) => {
     const TARGET_YEAR = parseInt(year);
     const TARGET_MONTH = parseInt(month);
 
+    console.log(`Processing attendance for ${TARGET_MONTH}/${TARGET_YEAR}`);
+
     // Fetch holidays for the year
     const holidays = await Holiday.find({ year: TARGET_YEAR });
+    console.log(`Found ${holidays.length} holidays for ${TARGET_YEAR}`);
 
     // Helper function to check if a date is a holiday
     function isHoliday(date, holidays) {
@@ -257,12 +265,14 @@ exports.uploadAttendance = async (req, res) => {
     }
 
     // Read workbook
+    console.log("Reading Excel file...");
     const workbook = XLSX.readFile(FILE_PATH);
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
 
     // Convert to array of arrays
     const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+    console.log(`Excel file has ${rawData.length} rows`);
 
     // Skip the top 4 rows (titles + weekday row) to get to the header (days)
     const headerRow = rawData[2];
@@ -300,13 +310,25 @@ exports.uploadAttendance = async (req, res) => {
     const employees = [];
     const missingEmployees = [];
 
+    console.log("Processing employee data...");
     // Use Promise.all for DB lookups
+    const invalidRows = [];
+
     await Promise.all(
       dataRows
         .filter((r) => r[0] && r[1])
         .map(async (row) => {
-          const employeeId = row[0]?.toString().trim();
+          const employeeIdRaw = row[0]?.toString().trim();
+          const employeeId = parseInt(employeeIdRaw);
           const name = row[1]?.toString().trim();
+
+          // Validate that employeeId is a valid number
+          if (isNaN(employeeId) || employeeId <= 0) {
+            console.warn(`Invalid employee ID: "${employeeIdRaw}" for ${name}`);
+            invalidRows.push({ employeeId: employeeIdRaw, name, reason: 'Invalid employee ID format' });
+            return;
+          }
+
           // Check if employee exists in DB
           const dbEmployee = await Employee.findOne({ employeeId });
           if (dbEmployee) {
@@ -379,8 +401,14 @@ exports.uploadAttendance = async (req, res) => {
         })
     );
 
+    console.log(`Processed ${employees.length} employees, ${missingEmployees.length} missing from DB, ${invalidRows.length} invalid rows`);
+
     // Save found employees to database
-    await Attendance.insertMany(employees);
+    if (employees.length > 0) {
+      console.log("Saving to database...");
+      await Attendance.insertMany(employees);
+      console.log("Successfully saved to database");
+    }
 
     // If you want to keep the uploaded file, do not delete it
     // fs.unlinkSync(FILE_PATH); // <-- Commented out to keep file
@@ -388,11 +416,17 @@ exports.uploadAttendance = async (req, res) => {
     res.status(201).json({
       message: "Attendance uploaded successfully",
       count: employees.length,
-      missingEmployees
+      missingEmployees,
+      invalidRows
     });
   } catch (error) {
     console.error("Error uploading attendance:", error);
-    res.status(500).json({ message: "Server error" });
+    console.error("Error stack:", error.stack);
+    res.status(500).json({
+      error: "Server error",
+      message: error.message,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 };
 
@@ -416,10 +450,19 @@ exports.getAttendance = async (req, res) => {
 
     // Add search filter if provided
     if (search && search.trim()) {
-      query.$or = [
-        { name: { $regex: search.trim(), $options: 'i' } },
-        { employeeId: { $regex: search.trim(), $options: 'i' } }
-      ];
+      const searchVal = search.trim();
+      const numericSearch = parseInt(searchVal);
+
+      if (!isNaN(numericSearch)) {
+        query.$or = [
+          { name: { $regex: searchVal, $options: 'i' } },
+          { employeeId: numericSearch }
+        ];
+      } else {
+        query.$or = [
+          { name: { $regex: searchVal, $options: 'i' } }
+        ];
+      }
       console.log("Search query applied:", query);
     }
 
@@ -495,9 +538,10 @@ exports.getAttendance = async (req, res) => {
           const date = new Date(targetYear, targetMonth - 1, dayRecord.day);
 
           // Priority 1: Holiday
-          const isHoliday = holidays.some(h => isDateInRange(date, h.fromDate, h.toDate));
-          if (isHoliday) {
+          const matchedHoliday = holidays.find(h => isDateInRange(date, h.fromDate, h.toDate));
+          if (matchedHoliday) {
             dayRecord.status = 'Holiday';
+            dayRecord.holidayName = matchedHoliday.name || 'Public Holiday';
           } else {
             // Priority 2: Leave (only if not a holiday)
             // Fix: Check for specific leave type (Site Visit)
@@ -521,7 +565,7 @@ exports.getAttendance = async (req, res) => {
 
   } catch (error) {
     console.error("Error fetching attendance:", error);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ error: "Server error fetching attendance." });
   }
 };
 

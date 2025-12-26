@@ -43,7 +43,7 @@ exports.register = async (req, res) => {
         employeeId: `EMP${Date.now()}`,
         name,
         personalEmail: email,
-        phone : phoneNo,
+        phone: phoneNo,
         workEmail: email,
         dateOfBirth: new Date(),
         dateOfJoining: new Date(),
@@ -72,7 +72,7 @@ exports.register = async (req, res) => {
     const token = jwt.sign(
       { userId: user._id, email, role },
       process.env.JWT_SECRET || "czarcore_secret_key",
-      { expiresIn: "24h" }
+      { expiresIn: "7d" }
     );
 
     res
@@ -89,14 +89,14 @@ exports.login = async (req, res) => {
     const { email, password } = req.body;
     const user = await User.findOne({ email });
     console.log(req.body);
-    
+
 
     if (!user) return res.status(400).json({ message: 'Invalid credentials' });
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(400).json({ message: 'Invalid credentials' });
 
-    const token = jwt.sign({ userId: user._id, email, role: user.role }, process.env.JWT_SECRET || 'czarcore_secret_key', { expiresIn: '24h' });
+    const token = jwt.sign({ userId: user._id, email, role: user.role }, process.env.JWT_SECRET || 'czarcore_secret_key', { expiresIn: '7d' });
 
     res.json({ message: 'Login successful', token, user });
   } catch {

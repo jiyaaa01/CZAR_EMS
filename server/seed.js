@@ -12,11 +12,11 @@ const seedDatabase = async () => {
     try {
         console.log('🌱 Seeding database...');
         await connectToDB();
-        console.log('✅ MongoDB connected successfully');
+        // console.log('✅ MongoDB connected successfully');
         await createDefaultEmployee();
+        // console.log(user)
         await createDefaultAdmin();
-        await addSampleHolidays();
-        // 'console.log('✅ Database seeded successfully');
+        // console.log('✅ Database seeded successfully');
         process.exit(0);
     } catch (error) {
         console.error('❌ Seeding failed:', error);
